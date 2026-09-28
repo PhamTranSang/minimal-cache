@@ -2,7 +2,7 @@
 
 Đây là hướng dẫn dùng API hiện có của project trong một chương trình Java. Project đang ở giai đoạn học tập, chưa phát hành artifact để tải từ Maven Central và chưa hỗ trợ truy cập cache đồng thời từ nhiều luồng.
 
-> **Lưu ý về Java modules:** Các ví dụ dưới đây áp dụng khi dùng mã nguồn hoặc artifact trên **classpath**. `module-info.java` hiện chưa export package `app.cache.builder` và các package chứa FIFO/LRU/LFU, nên một **named module** khác chưa thể dùng trực tiếp các lớp đó qua module path.
+> **Lưu ý về Java modules:** Các ví dụ dùng `CacheBuilder` dưới đây áp dụng khi dùng mã nguồn hoặc artifact trên **classpath**. `module-info.java` hiện chưa export package `app.cache.builder` và các package chứa FIFO/LRU/LFU, nên một **named module** khác chưa thể dùng trực tiếp các lớp đó qua module path.
 
 ## Tạo cache và thao tác cơ bản
 
@@ -67,3 +67,32 @@ Cache<String, String> cache = CacheBuilder.<String, String>newBuilder()
 TTL phải lớn hơn 0 và đủ nhỏ để biểu diễn bằng nanosecond. Xem [cách TTL hoạt động trong repo](ttl.md) để hiểu các thời điểm cache kiểm tra hạn dùng.
 
 Nguồn trong repo: [TtlExpirationPolicy](../src/main/java/app/cache/expiration/ttl/TtlExpirationPolicy.java), [CacheBuilder](../src/main/java/app/cache/builder/CacheBuilder.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+
+## Tạo cache bằng DSL
+
+Nếu muốn cấu hình bằng lambda, dùng `Caches.create(...)` rồi gọi `build()`. DSL tự tạo eviction policy mới cho cache; không cần import các lớp FIFO/LRU/LFU. Không gọi `capacity` thì mặc định là 100; không gọi `ttl` thì dùng `NoExpirationPolicy`.
+
+```java
+import app.cache.Cache;
+import app.cache.Caches;
+import java.time.Duration;
+
+public class DslUsageExample {
+    public static void main(String[] args) {
+        Cache<String, String> cache = Caches.create(config -> config
+            .capacity(2)
+            .lru()
+            .ttl(Duration.ofMinutes(5))
+        ).build();
+
+        cache.put("A", "alpha");
+
+        Cache<String, String> defaultCache = Caches.create(config -> config.lru()).build();
+        // defaultCache has capacity 100 and no expiration.
+    }
+}
+```
+
+Thay `.lru()` bằng `.fifo()` hoặc `.lfu()` để chọn chính sách khác. Mỗi lambda phải chọn đúng một policy; chọn policy lần hai sẽ báo lỗi cấu hình. Nếu gọi `capacity`, giá trị phải lớn hơn 0. `Caches` nằm trong package `app.cache` được export, nên riêng API DSL có thể được gọi từ named module khác.
+
+Nguồn trong repo: [Caches](../src/main/java/app/cache/Caches.java), [CacheConfig](../src/main/java/app/cache/config/CacheConfig.java).
