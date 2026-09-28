@@ -1,8 +1,8 @@
 package app.cache.exception;
 
-public final class InvalidCapacityException extends RuntimeException {
+public final class InvalidCapacityException extends CacheException {
 
-    public InvalidCapacityException(final int capacity) {
-        super("capacity must be greater than 0: " + capacity);
+    public InvalidCapacityException(final String message) {
+        super(message);
     }
 }

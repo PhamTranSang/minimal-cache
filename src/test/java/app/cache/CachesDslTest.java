@@ -2,15 +2,17 @@ package app.cache;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.cache.Caches.CacheConfiguration;
+import app.cache.exception.CacheException;
 import app.cache.exception.IncompleteCacheConfigurationException;
 import app.cache.exception.InvalidCacheConfigurationException;
 import app.cache.exception.InvalidCacheEntryException;
 import app.cache.exception.InvalidCapacityException;
 import app.cache.exception.InvalidTtlException;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -18,6 +20,58 @@ import org.junit.jupiter.api.Test;
 class CachesDslTest {
 
     private static final Duration TTL = Duration.ofMinutes(5);
+
+    @Nested
+    class PublicContract {
+
+        @Test
+        void callerErrorsShareCacheExceptionBase() {
+            final Cache<String, String> cache = Caches.create(CacheConfiguration::lru).build();
+
+            assertThrows(CacheException.class, () -> Caches.create(null));
+            assertThrows(CacheException.class, () -> Caches.create(c -> c.capacity(10)));
+            assertThrows(CacheException.class, Caches.create(c -> c.capacity(0).lru())::build);
+            assertThrows(CacheException.class, Caches.create(c -> c.lru().ttl(Duration.ZERO))::build);
+            assertThrows(CacheException.class, () -> cache.put(null, "value"));
+        }
+
+        @Test
+        void callersCanImplementCache() {
+            // Cache is not sealed, so callers can write their own fakes or decorators.
+            final Cache<String, String> fake = new Cache<>() {
+                private final Map<String, String> map = new HashMap<>();
+
+                @Override
+                public Optional<String> get(final String key) {
+                    return Optional.ofNullable(map.get(key));
+                }
+
+                @Override
+                public void put(final String key, final String value) {
+                    map.put(key, value);
+                }
+
+                @Override
+                public Optional<String> remove(final String key) {
+                    return Optional.ofNullable(map.remove(key));
+                }
+
+                @Override
+                public int size() {
+                    return map.size();
+                }
+
+                @Override
+                public void clear() {
+                    map.clear();
+                }
+            };
+
+            fake.put("A", "alpha");
+
+            assertEquals(Optional.of("alpha"), fake.get("A"));
+        }
+    }
 
     @Nested
     class Configuration {
@@ -29,17 +83,17 @@ class CachesDslTest {
 
         @Test
         void configurationMustReturnProvidedInstance() {
-            assertThrows(InvalidCacheConfigurationException.class, () -> Caches.create(config -> null));
+            assertThrows(InvalidCacheConfigurationException.class, () -> Caches.create(c -> null));
         }
 
         @Test
         void missingEvictionPolicyIsRejected() {
-            assertThrows(IncompleteCacheConfigurationException.class, () -> Caches.create(config -> config.capacity(10)));
+            assertThrows(IncompleteCacheConfigurationException.class, () -> Caches.create(c -> c.capacity(10)));
         }
 
         @Test
         void choosingSecondEvictionPolicyIsRejected() {
-            assertThrows(InvalidCacheConfigurationException.class, () -> Caches.create(config -> config.lru().lfu()));
+            assertThrows(InvalidCacheConfigurationException.class, () -> Caches.create(c -> c.lru().lfu()));
         }
 
         @Test
@@ -88,8 +142,8 @@ class CachesDslTest {
             second.put("E", "e");
 
             assertEquals(2, first.size());
-            assertTrue(first.get("A").isPresent());
-            assertTrue(first.get("B").isPresent());
+            assertEquals(Optional.of("a"), first.get("A"));
+            assertEquals(Optional.of("b"), first.get("B"));
             assertEquals(Optional.empty(), second.get("C"));
         }
     }
@@ -165,9 +219,9 @@ class CachesDslTest {
             cache.put("D", "d");
 
             assertEquals(Optional.empty(), cache.get("A"));
-            assertTrue(cache.get("B").isPresent());
-            assertTrue(cache.get("C").isPresent());
-            assertTrue(cache.get("D").isPresent());
+            assertEquals(Optional.of("b"), cache.get("B"));
+            assertEquals(Optional.of("c"), cache.get("C"));
+            assertEquals(Optional.of("d"), cache.get("D"));
         }
 
         @Test
@@ -181,9 +235,9 @@ class CachesDslTest {
             cache.put("D", "d");
 
             assertEquals(Optional.empty(), cache.get("B"));
-            assertTrue(cache.get("A").isPresent());
-            assertTrue(cache.get("C").isPresent());
-            assertTrue(cache.get("D").isPresent());
+            assertEquals(Optional.of("a"), cache.get("A"));
+            assertEquals(Optional.of("c"), cache.get("C"));
+            assertEquals(Optional.of("d"), cache.get("D"));
         }
 
         @Test
@@ -203,9 +257,9 @@ class CachesDslTest {
             cache.put("E", "e");
 
             assertEquals(Optional.empty(), cache.get("A"));
-            assertTrue(cache.get("B").isPresent());
-            assertTrue(cache.get("D").isPresent());
-            assertTrue(cache.get("E").isPresent());
+            assertEquals(Optional.of("b"), cache.get("B"));
+            assertEquals(Optional.of("d"), cache.get("D"));
+            assertEquals(Optional.of("e"), cache.get("E"));
         }
 
         @Test
@@ -218,7 +272,7 @@ class CachesDslTest {
             cache.put("C", "c");
 
             assertEquals(Optional.empty(), cache.get("A"));
-            assertTrue(cache.get("B").isPresent());
+            assertEquals(Optional.of("b"), cache.get("B"));
         }
 
         @Test
@@ -271,8 +325,8 @@ class CachesDslTest {
             cache.put("C", "c");
 
             assertEquals(2, cache.size());
-            assertTrue(cache.get("B").isPresent());
-            assertTrue(cache.get("C").isPresent());
+            assertEquals(Optional.of("b"), cache.get("B"));
+            assertEquals(Optional.of("c"), cache.get("C"));
         }
 
         @Test
@@ -362,8 +416,8 @@ class CachesDslTest {
 
             // A expired, so it is cleaned instead of evicting the still-valid B.
             assertEquals(Optional.empty(), cache.get("A"));
-            assertTrue(cache.get("B").isPresent());
-            assertTrue(cache.get("C").isPresent());
+            assertEquals(Optional.of("b"), cache.get("B"));
+            assertEquals(Optional.of("c"), cache.get("C"));
         }
     }
 }

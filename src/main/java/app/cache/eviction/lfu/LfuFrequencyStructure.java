@@ -2,96 +2,93 @@ package app.cache.eviction.lfu;
 
 import app.cache.entry.CacheEntry;
 import app.cache.entry.EntryList;
-import app.cache.exception.EmptyFrequencyBucketException;
-import app.cache.exception.MissingFrequencyBucketException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 final class LfuFrequencyStructure<K, V> {
 
     // Each bucket keeps entries of one frequency, oldest arrival at the head.
     private final Map<Integer, EntryList<K, V>> buckets = new HashMap<>();
 
-    private int minFreq;
+    private int minFrequency;
 
-    public void add(final CacheEntry<K, V> entry) {
+    void add(final CacheEntry<K, V> entry) {
         buckets
-            .computeIfAbsent(entry.getFrequency(), ignored -> new EntryList<>())
+            .computeIfAbsent(entry.frequency(), ignored -> new EntryList<>())
             .addLast(entry);
 
-        minFreq = entry.getFrequency();
+        minFrequency = entry.frequency();
     }
 
-    public void access(final CacheEntry<K, V> entry) {
-        final int oldFreq = entry.getFrequency();
-        final EntryList<K, V> oldBucket = bucketOf(oldFreq);
+    void access(final CacheEntry<K, V> entry) {
+        final int oldFrequency = entry.frequency();
+        final EntryList<K, V> oldBucket = bucketOf(oldFrequency);
 
         oldBucket.remove(entry);
 
         if (oldBucket.isEmpty()) {
-            buckets.remove(oldFreq);
+            buckets.remove(oldFrequency);
 
-            if (minFreq == oldFreq) {
-                minFreq = oldFreq + 1;
+            if (minFrequency == oldFrequency) {
+                minFrequency = oldFrequency + 1;
             }
         }
 
         entry.incrementFrequency();
 
         buckets
-            .computeIfAbsent(entry.getFrequency(), ignored -> new EntryList<>())
+            .computeIfAbsent(entry.frequency(), ignored -> new EntryList<>())
             .addLast(entry);
     }
 
-    public void remove(final CacheEntry<K, V> entry) {
-        final int freq = entry.getFrequency();
-        final EntryList<K, V> bucket = bucketOf(freq);
+    void remove(final CacheEntry<K, V> entry) {
+        final int frequency = entry.frequency();
+        final EntryList<K, V> bucket = bucketOf(frequency);
 
         bucket.remove(entry);
 
         if (bucket.isEmpty()) {
-            buckets.remove(freq);
+            buckets.remove(frequency);
 
-            if (freq == minFreq) {
-                minFreq = findMinFrequency();
+            if (frequency == minFrequency) {
+                minFrequency = findMinFrequency();
             }
         }
     }
 
-    public CacheEntry<K, V> removeLeastFrequentlyUsed() {
+    CacheEntry<K, V> removeLeastFrequentlyUsed() {
         if (buckets.isEmpty()) {
             return null;
         }
 
-        final EntryList<K, V> bucket = bucketOf(minFreq);
+        final EntryList<K, V> bucket = bucketOf(minFrequency);
         final CacheEntry<K, V> victim = bucket.removeFirst();
 
-        if (Objects.isNull(victim)) {
-            throw new EmptyFrequencyBucketException(minFreq);
+        if (victim == null) {
+            throw new IllegalStateException("frequency bucket is empty: " + minFrequency);
         }
 
         if (bucket.isEmpty()) {
-            buckets.remove(minFreq);
-            minFreq = findMinFrequency();
+            buckets.remove(minFrequency);
+            minFrequency = findMinFrequency();
         }
 
         return victim;
     }
 
-    public void clear() {
+    void clear() {
         buckets.clear();
-        minFreq = 0;
+        minFrequency = 0;
     }
 
-    private EntryList<K, V> bucketOf(final int freq) {
-        final EntryList<K, V> bucket = buckets.get(freq);
+    private EntryList<K, V> bucketOf(final int frequency) {
+        final EntryList<K, V> bucket = buckets.get(frequency);
 
-        if (Objects.isNull(bucket)) {
-            throw new MissingFrequencyBucketException(freq);
+        if (bucket == null) {
+            throw new IllegalStateException("no frequency bucket found: " + frequency);
         }
         if (bucket.isEmpty()) {
-            throw new EmptyFrequencyBucketException(freq);
+            throw new IllegalStateException("frequency bucket is empty: " + frequency);
         }
 
         return bucket;

@@ -16,11 +16,11 @@ public final class CacheEntry<K, V> {
         this.value = value;
     }
 
-    public K getKey() {
+    public K key() {
         return key;
     }
 
-    public V getValue() {
+    public V value() {
         return value;
     }
 
@@ -28,7 +28,7 @@ public final class CacheEntry<K, V> {
         this.value = value;
     }
 
-    public long getWriteTime() {
+    public long writeTime() {
         return writeTime;
     }
 
@@ -36,7 +36,7 @@ public final class CacheEntry<K, V> {
         this.writeTime = writeTime;
     }
 
-    public int getFrequency() {
+    public int frequency() {
         return frequency;
     }
 
@@ -44,7 +44,7 @@ public final class CacheEntry<K, V> {
         frequency++;
     }
 
-    CacheEntry<K, V> getPrev() {
+    CacheEntry<K, V> prev() {
         return prev;
     }
 
@@ -52,7 +52,7 @@ public final class CacheEntry<K, V> {
         this.prev = prev;
     }
 
-    CacheEntry<K, V> getNext() {
+    CacheEntry<K, V> next() {
         return next;
     }
 

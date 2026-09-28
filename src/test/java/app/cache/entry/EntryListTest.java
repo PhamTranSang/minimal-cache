@@ -19,7 +19,7 @@ class EntryListTest {
         final List<String> keys = new ArrayList<>();
         CacheEntry<String, String> entry;
         while ((entry = list.removeFirst()) != null) {
-            keys.add(entry.getKey());
+            keys.add(entry.key());
         }
         return keys;
     }

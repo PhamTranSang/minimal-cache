@@ -16,14 +16,13 @@ public final class TtlExpirationPolicy<K, V> implements ExpirationPolicy<K, V> {
         if (ttl == null) {
             throw new InvalidTtlException("ttl must not be null");
         }
-
         if (ttl.isZero() || ttl.isNegative()) {
             throw new InvalidTtlException("ttl must be greater than 0");
         }
 
         try {
             this.ttlNanos = ttl.toNanos();
-        } catch (ArithmeticException cause) {
+        } catch (final ArithmeticException cause) {
             throw new InvalidTtlException("ttl is too large to represent in nanoseconds", cause);
         }
 
@@ -41,7 +40,7 @@ public final class TtlExpirationPolicy<K, V> implements ExpirationPolicy<K, V> {
 
     @Override
     public boolean isExpired(final CacheEntry<K, V> entry) {
-        final long elapsed = ticker.read() - entry.getWriteTime();
+        final long elapsed = ticker.read() - entry.writeTime();
 
         return elapsed >= ttlNanos;
     }

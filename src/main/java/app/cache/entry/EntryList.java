@@ -19,8 +19,8 @@ public final class EntryList<K, V> {
     }
 
     public void remove(final CacheEntry<K, V> entry) {
-        final CacheEntry<K, V> prev = entry.getPrev();
-        final CacheEntry<K, V> next = entry.getNext();
+        final CacheEntry<K, V> prev = entry.prev();
+        final CacheEntry<K, V> next = entry.next();
 
         if (prev != null) {
             prev.setNext(next);

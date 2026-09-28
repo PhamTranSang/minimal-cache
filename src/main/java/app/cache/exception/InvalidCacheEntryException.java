@@ -1,6 +1,6 @@
 package app.cache.exception;
 
-public final class InvalidCacheEntryException extends RuntimeException {
+public final class InvalidCacheEntryException extends CacheException {
 
     public InvalidCacheEntryException(final String message) {
         super(message);

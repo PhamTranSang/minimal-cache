@@ -2,7 +2,7 @@ package app.cache;
 
 import java.util.Optional;
 
-public sealed interface Cache<K, V> permits InMemoryCache {
+public interface Cache<K, V> {
 
     Optional<V> get(K key);
 

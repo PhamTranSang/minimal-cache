@@ -2,7 +2,7 @@
 
 Đây là hướng dẫn dùng API hiện có của project trong một chương trình Java. Project đang ở giai đoạn học tập, chưa phát hành artifact để tải từ Maven Central và chưa hỗ trợ truy cập cache đồng thời từ nhiều luồng.
 
-Cache được tạo qua DSL `Caches.create(...)`. `Cache`, `Caches` và `Ticker` đều nằm trong package `app.cache` được export, nên API này dùng được cả trên classpath lẫn từ một named module khác.
+Cache được tạo qua DSL `Caches.create(...)`. Module chỉ export hai package: `app.cache` (chứa `Cache`, `Caches`, `Ticker`) và `app.cache.exception`. Các package còn lại như eviction policy, expiration policy và cấu hình nội bộ là chi tiết cài đặt; từ một named module khác, compiler sẽ báo `package ... is not visible` nếu import chúng.
 
 ## Tạo cache và thao tác cơ bản
 
@@ -88,3 +88,21 @@ System.out.println(cache.get("A")); // Optional.empty
 `Ticker` chỉ dùng để đo khoảng thời gian, không phải giờ đồng hồ. Không gọi `ttl` thì cache không đọc ticker. Truyền `null` cho `ticker` khi đã gọi `ttl` sẽ báo lỗi cấu hình khi `build()`.
 
 Nguồn trong repo: [Caches](../src/main/java/app/cache/Caches.java), [Ticker](../src/main/java/app/cache/Ticker.java), [TtlExpirationPolicy](../src/main/java/app/cache/expiration/ttl/TtlExpirationPolicy.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+
+## Xử lý lỗi
+
+Mọi lỗi do cách cấu hình hoặc cách gọi cache đều kế thừa `app.cache.exception.CacheException`, một `RuntimeException`. Bắt `CacheException` là đủ để xử lý chung; bắt lớp con khi cần phân biệt:
+
+| Exception | Khi nào |
+| --- | --- |
+| `IncompleteCacheConfigurationException` | Lambda cấu hình không chọn eviction policy. |
+| `InvalidCacheConfigurationException` | Truyền `null` cho `Caches.create`, lambda không trả về đúng object cấu hình, chọn eviction policy lần hai, hoặc `ticker` là `null` khi đã gọi `ttl`. |
+| `InvalidCapacityException` | `capacity` nhỏ hơn hoặc bằng 0. |
+| `InvalidTtlException` | TTL là `null`, nhỏ hơn hoặc bằng 0, hoặc quá lớn để biểu diễn bằng nanosecond. |
+| `InvalidCacheEntryException` | Key hoặc value là `null` khi gọi `get`, `put`, `remove`. |
+
+Nếu cache ném `IllegalStateException`, đó là lỗi bên trong thư viện (trạng thái nội bộ không nhất quán), không phải do cách gọi.
+
+`Cache` là interface thường, nên có thể tự implement nó để làm bản giả trong test hoặc bọc thêm hành vi (ví dụ đếm số lần gọi) quanh một cache thật.
+
+Nguồn trong repo: [CacheException](../src/main/java/app/cache/exception/CacheException.java), [Cache](../src/main/java/app/cache/Cache.java), [module-info](../src/main/java/module-info.java).

@@ -1,6 +1,6 @@
 package app.cache.exception;
 
-public final class InvalidTtlException extends RuntimeException {
+public final class InvalidTtlException extends CacheException {
 
     public InvalidTtlException(final String message) {
         super(message);
