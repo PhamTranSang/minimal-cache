@@ -1,28 +1,29 @@
 package app.cache.eviction.lfu;
 
+import app.cache.entry.CacheEntry;
 import app.cache.eviction.EvictionPolicy;
 
-public final class LfuEvictionPolicy<K> implements EvictionPolicy<K> {
+public final class LfuEvictionPolicy<K, V> implements EvictionPolicy<K, V> {
 
-    private final LfuFrequencyStructure<K> structure = new LfuFrequencyStructure<>();
+    private final LfuFrequencyStructure<K, V> structure = new LfuFrequencyStructure<>();
 
     @Override
-    public void onGet(final K key) {
-        structure.access(key);
+    public void onAdd(final CacheEntry<K, V> entry) {
+        structure.add(entry);
     }
 
     @Override
-    public void onPut(final K key) {
-        structure.add(key);
+    public void onAccess(final CacheEntry<K, V> entry) {
+        structure.access(entry);
     }
 
     @Override
-    public void onRemove(final K key) {
-        structure.remove(key);
+    public void onRemove(final CacheEntry<K, V> entry) {
+        structure.remove(entry);
     }
 
     @Override
-    public K evict() {
+    public CacheEntry<K, V> evict() {
         return structure.removeLeastFrequentlyUsed();
     }
 

@@ -1,55 +1,33 @@
 package app.cache.eviction.lfu;
 
+import app.cache.entry.CacheEntry;
+import app.cache.entry.EntryList;
 import app.cache.exception.EmptyFrequencyBucketException;
 import app.cache.exception.MissingFrequencyBucketException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-final class LfuFrequencyStructure<K> {
+final class LfuFrequencyStructure<K, V> {
 
-    private final Map<K, LfuNode<K>> nodes = new HashMap<>();
-    private final Map<Integer, FrequencyBucket<K>> buckets = new HashMap<>();
+    // Each bucket keeps entries of one frequency, oldest arrival at the head.
+    private final Map<Integer, EntryList<K, V>> buckets = new HashMap<>();
 
     private int minFreq;
 
-    public void add(final K key) {
-        final LfuNode<K> existing = nodes.get(key);
-
-        if (Objects.nonNull(existing)) {
-            access(key);
-            return;
-        }
-
-        final LfuNode<K> node = new LfuNode<>(key);
-
-        nodes.put(key, node);
-
+    public void add(final CacheEntry<K, V> entry) {
         buckets
-            .computeIfAbsent(1, ignored -> new FrequencyBucket<>())
-            .addToTail(node);
+            .computeIfAbsent(entry.getFrequency(), ignored -> new EntryList<>())
+            .addLast(entry);
 
-        minFreq = 1;
+        minFreq = entry.getFrequency();
     }
 
-    public void access(final K key) {
-        final LfuNode<K> node = nodes.get(key);
+    public void access(final CacheEntry<K, V> entry) {
+        final int oldFreq = entry.getFrequency();
+        final EntryList<K, V> oldBucket = bucketOf(oldFreq);
 
-        if (Objects.isNull(node)) {
-            return;
-        }
-
-        final int oldFreq = node.getFreq();
-        final FrequencyBucket<K> oldBucket = buckets.get(oldFreq);
-
-        if (oldBucket == null) {
-            throw new MissingFrequencyBucketException(oldFreq);
-        }
-        if (oldBucket.isEmpty()) {
-            throw new EmptyFrequencyBucketException(oldFreq);
-        }
-
-        oldBucket.remove(node);
+        oldBucket.remove(entry);
 
         if (oldBucket.isEmpty()) {
             buckets.remove(oldFreq);
@@ -59,32 +37,18 @@ final class LfuFrequencyStructure<K> {
             }
         }
 
-        node.incrementFreq();
+        entry.incrementFrequency();
 
         buckets
-            .computeIfAbsent(node.getFreq(), ignored -> new FrequencyBucket<>())
-            .addToTail(node);
+            .computeIfAbsent(entry.getFrequency(), ignored -> new EntryList<>())
+            .addLast(entry);
     }
 
-    public void remove(final K key) {
-        final LfuNode<K> node = nodes.get(key);
+    public void remove(final CacheEntry<K, V> entry) {
+        final int freq = entry.getFrequency();
+        final EntryList<K, V> bucket = bucketOf(freq);
 
-        if (Objects.isNull(node)) {
-            return;
-        }
-
-        final int freq = node.getFreq();
-        final FrequencyBucket<K> bucket = buckets.get(freq);
-
-        if (bucket == null) {
-            throw new MissingFrequencyBucketException(freq);
-        }
-        if (bucket.isEmpty()) {
-            throw new EmptyFrequencyBucketException(freq);
-        }
-
-        bucket.remove(node);
-        nodes.remove(key);
+        bucket.remove(entry);
 
         if (bucket.isEmpty()) {
             buckets.remove(freq);
@@ -95,40 +59,42 @@ final class LfuFrequencyStructure<K> {
         }
     }
 
-    public K removeLeastFrequentlyUsed() {
-        if (nodes.isEmpty()) {
+    public CacheEntry<K, V> removeLeastFrequentlyUsed() {
+        if (buckets.isEmpty()) {
             return null;
         }
 
-        final FrequencyBucket<K> bucket = buckets.get(minFreq);
-        if (Objects.isNull(bucket)) {
-            throw new MissingFrequencyBucketException(minFreq);
-        }
+        final EntryList<K, V> bucket = bucketOf(minFreq);
+        final CacheEntry<K, V> victim = bucket.removeFirst();
 
-        final LfuNode<K> victim = bucket.removeHead();
         if (Objects.isNull(victim)) {
             throw new EmptyFrequencyBucketException(minFreq);
         }
 
-        nodes.remove(victim.getKey());
-
         if (bucket.isEmpty()) {
             buckets.remove(minFreq);
-
-            if (nodes.isEmpty()) {
-                minFreq = 0;
-            } else {
-                minFreq = findMinFrequency();
-            }
+            minFreq = findMinFrequency();
         }
 
-        return victim.getKey();
+        return victim;
     }
 
     public void clear() {
-        nodes.clear();
         buckets.clear();
         minFreq = 0;
+    }
+
+    private EntryList<K, V> bucketOf(final int freq) {
+        final EntryList<K, V> bucket = buckets.get(freq);
+
+        if (Objects.isNull(bucket)) {
+            throw new MissingFrequencyBucketException(freq);
+        }
+        if (bucket.isEmpty()) {
+            throw new EmptyFrequencyBucketException(freq);
+        }
+
+        return bucket;
     }
 
     private int findMinFrequency() {

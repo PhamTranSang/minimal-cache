@@ -1,10 +1,12 @@
 package app.cache;
 
 import app.cache.config.CacheConfig;
+import app.cache.entry.CacheEntry;
 import app.cache.exception.InvalidCacheConfigurationException;
 import app.cache.exception.InvalidCacheEntryException;
 import app.cache.exception.MissingEvictionVictimException;
 import app.cache.exception.UnknownEvictionVictimException;
+import app.cache.expiration.ttl.NoExpirationPolicy;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -16,10 +18,11 @@ public final class InMemoryCache<K, V> implements Cache<K, V> {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryCache.class);
 
-    private final Map<K, V> entries = new HashMap<>();
-    private final CacheConfig<K> config;
+    // Single source of truth: policies keep their metadata on the entries, not in maps of their own.
+    private final Map<K, CacheEntry<K, V>> entries = new HashMap<>();
+    private final CacheConfig<K, V> config;
 
-    public InMemoryCache(final CacheConfig<K> config) {
+    public InMemoryCache(final CacheConfig<K, V> config) {
         if (config == null) {
             throw new InvalidCacheConfigurationException("config must not be null");
         }
@@ -33,21 +36,21 @@ public final class InMemoryCache<K, V> implements Cache<K, V> {
             throw new InvalidCacheEntryException("key must not be null");
         }
 
-        final V value = entries.get(key);
+        final CacheEntry<K, V> entry = entries.get(key);
 
-        if (value == null) {
+        if (entry == null) {
             return Optional.empty();
         }
 
-        if (config.expirationPolicy().isExpired(key)) {
-            removeEntry(key);
+        if (config.expirationPolicy().isExpired(entry)) {
+            removeEntry(entry);
             log.debug("Expired cache entry removed, key={}", key);
             return Optional.empty();
         }
 
-        config.evictionPolicy().onGet(key);
+        config.evictionPolicy().onAccess(entry);
 
-        return Optional.of(value);
+        return Optional.of(entry.getValue());
     }
 
     @Override
@@ -59,22 +62,24 @@ public final class InMemoryCache<K, V> implements Cache<K, V> {
             throw new InvalidCacheEntryException("value must not be null");
         }
 
-        if (entries.containsKey(key)) {
+        final CacheEntry<K, V> existing = entries.get(key);
 
-            if (config.expirationPolicy().isExpired(key)) {
-                removeEntry(key);
+        if (existing != null) {
+
+            if (config.expirationPolicy().isExpired(existing)) {
+                removeEntry(existing);
                 log.debug("Expired cache entry removed, key={}", key);
             } else {
-                entries.put(key, value);
+                existing.setValue(value);
 
-                config.evictionPolicy().onPut(key);
-                config.expirationPolicy().onPut(key);
+                config.expirationPolicy().onWrite(existing);
+                config.evictionPolicy().onAccess(existing);
 
                 return;
             }
         }
 
-        if (entries.size() >= config.capacity()) {
+        if (entries.size() >= config.capacity() && !(config.expirationPolicy() instanceof NoExpirationPolicy)) {
             removeExpiredEntries();
         }
 
@@ -82,10 +87,11 @@ public final class InMemoryCache<K, V> implements Cache<K, V> {
             evict();
         }
 
-        entries.put(key, value);
+        final CacheEntry<K, V> entry = new CacheEntry<>(key, value);
+        entries.put(key, entry);
 
-        config.evictionPolicy().onPut(key);
-        config.expirationPolicy().onPut(key);
+        config.expirationPolicy().onWrite(entry);
+        config.evictionPolicy().onAdd(entry);
     }
 
     @Override
@@ -94,7 +100,15 @@ public final class InMemoryCache<K, V> implements Cache<K, V> {
             throw new InvalidCacheEntryException("key must not be null");
         }
 
-        return Optional.ofNullable(removeEntry(key));
+        final CacheEntry<K, V> entry = entries.get(key);
+
+        if (entry == null) {
+            return Optional.empty();
+        }
+
+        removeEntry(entry);
+
+        return Optional.of(entry.getValue());
     }
 
     @Override
@@ -107,55 +121,42 @@ public final class InMemoryCache<K, V> implements Cache<K, V> {
         entries.clear();
 
         config.evictionPolicy().clear();
-        config.expirationPolicy().clear();
     }
 
     private void evict() {
-        final K victim = config.evictionPolicy().evict();
+        final CacheEntry<K, V> victim = config.evictionPolicy().evict();
 
         if (victim == null) {
             throw new MissingEvictionVictimException();
         }
 
-        final V removed = entries.remove(victim);
-
-        if (removed == null) {
-            throw new UnknownEvictionVictimException(victim);
+        if (!entries.remove(victim.getKey(), victim)) {
+            throw new UnknownEvictionVictimException(victim.getKey());
         }
 
-        config.expirationPolicy().onRemove(victim);
-        log.debug("Evicted cache entry, key={}", victim);
+        log.debug("Evicted cache entry, key={}", victim.getKey());
     }
 
-    private V removeEntry(final K key) {
-        final V removed = entries.remove(key);
+    private void removeEntry(final CacheEntry<K, V> entry) {
+        entries.remove(entry.getKey());
 
-        if (removed == null) {
-            return null;
-        }
-
-        config.evictionPolicy().onRemove(key);
-        config.expirationPolicy().onRemove(key);
-
-        return removed;
+        config.evictionPolicy().onRemove(entry);
     }
 
     private void removeExpiredEntries() {
-        final Iterator<K> iterator =
-                entries.keySet().iterator();
+        final Iterator<CacheEntry<K, V>> iterator = entries.values().iterator();
 
         while (iterator.hasNext()) {
-            final K key = iterator.next();
+            final CacheEntry<K, V> entry = iterator.next();
 
-            if (!config.expirationPolicy().isExpired(key)) {
+            if (!config.expirationPolicy().isExpired(entry)) {
                 continue;
             }
 
             iterator.remove();
 
-            config.evictionPolicy().onRemove(key);
-            config.expirationPolicy().onRemove(key);
-            log.debug("Expired cache entry removed, key={}", key);
+            config.evictionPolicy().onRemove(entry);
+            log.debug("Expired cache entry removed, key={}", entry.getKey());
         }
     }
 }

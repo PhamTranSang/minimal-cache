@@ -4,13 +4,15 @@
 
 ## TTL hoạt động thế nào?
 
-`TtlExpirationPolicy` nhận một `Duration` dương. Mỗi lần `put` một key, policy lưu thời điểm ghi bằng `System.nanoTime()`. Khi kiểm tra key, nó lấy thời gian đã trôi qua kể từ lần ghi gần nhất và so với TTL. Một lần `get` không gia hạn TTL; cập nhật giá trị bằng `put` sẽ ghi lại thời điểm và bắt đầu một khoảng TTL mới.
+`TtlExpirationPolicy` nhận một `Duration` dương. Mỗi lần `put` một key, policy ghi thời điểm ghi vào trường `writeTime` trên `CacheEntry` của key đó, đọc từ một `Ticker`: nguồn thời gian trả về số nanosecond, mặc định là `System.nanoTime()`. Khi kiểm tra key, nó lấy thời gian đã trôi qua kể từ lần ghi gần nhất và so với TTL. Một lần `get` không gia hạn TTL; cập nhật giá trị bằng `put` sẽ ghi lại thời điểm và bắt đầu một khoảng TTL mới.
 
 Ví dụ TTL là 5 phút: ghi A lúc 10:00, đọc A lúc 10:04 thì A vẫn hợp lệ; nếu không ghi lại A, một lần đọc ở 10:05 hoặc sau đó sẽ thấy A hết hạn. Các mốc giờ ở đây chỉ để minh họa; code đo khoảng thời gian đã trôi qua, không lưu giờ đồng hồ.
 
-Nếu không cấu hình expiration policy, `CacheBuilder` dùng `NoExpirationPolicy`, nên phần tử không hết hạn theo thời gian.
+Nếu không gọi `ttl` trong DSL `Caches.create(...)`, cache dùng `NoExpirationPolicy`, nên phần tử không hết hạn theo thời gian.
 
-Nguồn trong repo: [TtlExpirationPolicy](../src/main/java/app/cache/expiration/ttl/TtlExpirationPolicy.java), [NoExpirationPolicy](../src/main/java/app/cache/expiration/ttl/NoExpirationPolicy.java), [CacheBuilder](../src/main/java/app/cache/builder/CacheBuilder.java).
+Gọi `ticker(...)` trong DSL để thay nguồn thời gian. Test trong repo dùng một `FakeTicker` chỉ tăng thời gian khi gọi `advance(...)`, nên kiểm tra được entry hết hạn mà không phải `Thread.sleep`.
+
+Nguồn trong repo: [TtlExpirationPolicy](../src/main/java/app/cache/expiration/ttl/TtlExpirationPolicy.java), [NoExpirationPolicy](../src/main/java/app/cache/expiration/ttl/NoExpirationPolicy.java), [CacheEntry](../src/main/java/app/cache/entry/CacheEntry.java), [Ticker](../src/main/java/app/cache/Ticker.java), [Caches](../src/main/java/app/cache/Caches.java), [FakeTicker](../src/test/java/app/cache/FakeTicker.java).
 
 ## Khi nào phần tử hết hạn thực sự bị xóa?
 
@@ -26,6 +28,6 @@ Nguồn trong repo: [InMemoryCache](../src/main/java/app/cache/InMemoryCache.jav
 
 ## TTL phối hợp với eviction ra sao?
 
-Expiration policy lưu thời điểm ghi; eviction policy giữ thứ tự hoặc tần suất để chọn key khi cache đầy. Khi entry bị xóa vì TTL, `InMemoryCache` báo cho cả hai policy bằng `onRemove(key)`. Nếu sau khi dọn entry hết hạn cache vẫn đầy, nó mới gọi `evict()` theo FIFO, LRU hoặc LFU. Hai cơ chế có trách nhiệm riêng nhưng phải cùng theo dõi tập key đang nằm trong cache.
+Expiration policy ghi thời điểm ghi lên entry; eviction policy giữ thứ tự hoặc tần suất để chọn key khi cache đầy. `TtlExpirationPolicy` không giữ trạng thái riêng, nên khi entry bị xóa vì TTL, `InMemoryCache` chỉ cần báo cho eviction policy bằng `onRemove(entry)`. Nếu sau khi dọn entry hết hạn cache vẫn đầy, nó mới gọi `evict()` theo FIFO, LRU hoặc LFU. Hai cơ chế có trách nhiệm riêng nhưng cùng làm việc trên các entry trong map duy nhất của cache.
 
 Nguồn trong repo: [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java), [ExpirationPolicy](../src/main/java/app/cache/expiration/ExpirationPolicy.java), [EvictionPolicy](../src/main/java/app/cache/eviction/EvictionPolicy.java).

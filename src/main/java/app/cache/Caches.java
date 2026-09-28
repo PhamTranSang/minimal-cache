@@ -40,6 +40,7 @@ public final class Caches {
         private EvictionType evictionType;
         private Duration ttl;
         private boolean ttlConfigured;
+        private Ticker ticker = Ticker.systemTicker();
 
         private CacheConfiguration() {
         }
@@ -67,6 +68,11 @@ public final class Caches {
             return this;
         }
 
+        public CacheConfiguration ticker(final Ticker ticker) {
+            this.ticker = ticker;
+            return this;
+        }
+
         private CacheConfiguration eviction(final EvictionType kind) {
             if (evictionType != null) {
                 throw new InvalidCacheConfigurationException("eviction policy already configured");
@@ -85,14 +91,14 @@ public final class Caches {
         public <K, V> Cache<K, V> build() {
             validate();
 
-            final EvictionPolicy<K> evictionPolicy = switch (evictionType) {
+            final EvictionPolicy<K, V> evictionPolicy = switch (evictionType) {
                 case FIFO -> new FifoEvictionPolicy<>();
                 case LRU -> new LruEvictionPolicy<>();
                 case LFU -> new LfuEvictionPolicy<>();
             };
 
-            final ExpirationPolicy<K> expirationPolicy = ttlConfigured
-                ? new TtlExpirationPolicy<>(ttl)
+            final ExpirationPolicy<K, V> expirationPolicy = ttlConfigured
+                ? new TtlExpirationPolicy<>(ttl, ticker)
                 : new NoExpirationPolicy<>();
 
             return new InMemoryCache<>(new CacheConfig<>(capacity, evictionPolicy, expirationPolicy));

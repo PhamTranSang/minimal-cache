@@ -17,8 +17,7 @@ import org.junit.jupiter.api.Test;
 
 class CachesDslTest {
 
-    private static final Duration SHORT_TTL = Duration.ofMillis(50);
-    private static final long WAIT_PAST_TTL_MILLIS = 100;
+    private static final Duration TTL = Duration.ofMinutes(5);
 
     @Nested
     class Configuration {
@@ -54,6 +53,13 @@ class CachesDslTest {
         void invalidTtlIsRejectedOnBuild() {
             assertThrows(InvalidTtlException.class, Caches.create(c -> c.fifo().ttl(Duration.ZERO))::build);
             assertThrows(InvalidTtlException.class, Caches.create(c -> c.fifo().ttl(null))::build);
+        }
+
+        @Test
+        void nullTickerIsRejectedOnBuildWhenTtlIsConfigured() {
+            final CacheConfiguration config = Caches.create(c -> c.fifo().ttl(TTL).ticker(null));
+
+            assertThrows(InvalidCacheConfigurationException.class, config::build);
         }
 
         @Test
@@ -201,45 +207,155 @@ class CachesDslTest {
             assertTrue(cache.get("D").isPresent());
             assertTrue(cache.get("E").isPresent());
         }
+
+        @Test
+        void fifoUpdateDoesNotChangeInsertionOrder() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).fifo()).build();
+            cache.put("A", "a");
+            cache.put("B", "b");
+            cache.put("A", "a-2");
+
+            cache.put("C", "c");
+
+            assertEquals(Optional.empty(), cache.get("A"));
+            assertTrue(cache.get("B").isPresent());
+        }
+
+        @Test
+        void fifoReAddedKeyMovesToBackOfQueue() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).fifo()).build();
+            cache.put("A", "a");
+            cache.put("B", "b");
+            cache.remove("A");
+            cache.put("A", "a-2");
+
+            cache.put("C", "c");
+
+            assertEquals(Optional.empty(), cache.get("B"));
+            assertEquals(Optional.of("a-2"), cache.get("A"));
+        }
+
+        @Test
+        void lfuUpdateCountsAsUse() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).lfu()).build();
+            cache.put("A", "a");
+            cache.put("B", "b");
+            cache.put("A", "a-2");
+
+            cache.put("C", "c");
+
+            assertEquals(Optional.empty(), cache.get("B"));
+            assertEquals(Optional.of("a-2"), cache.get("A"));
+        }
+
+        @Test
+        void lruUpdateMarksKeyAsRecentlyUsed() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).lru()).build();
+            cache.put("A", "a");
+            cache.put("B", "b");
+            cache.put("A", "a-2");
+
+            cache.put("C", "c");
+
+            assertEquals(Optional.empty(), cache.get("B"));
+            assertEquals(Optional.of("a-2"), cache.get("A"));
+        }
+
+        @Test
+        void removedKeyIsNoLongerAnEvictionCandidate() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).lru()).build();
+            cache.put("A", "a");
+            cache.put("B", "b");
+            cache.remove("A");
+
+            cache.put("C", "c");
+
+            assertEquals(2, cache.size());
+            assertTrue(cache.get("B").isPresent());
+            assertTrue(cache.get("C").isPresent());
+        }
+
+        @Test
+        void cacheIsUsableAfterClear() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).lfu()).build();
+            cache.put("A", "a");
+            cache.put("B", "b");
+            cache.clear();
+
+            cache.put("C", "c");
+            cache.put("D", "d");
+            cache.put("E", "e");
+
+            assertEquals(2, cache.size());
+            assertEquals(Optional.empty(), cache.get("C"));
+        }
     }
 
     @Nested
     class Ttl {
 
+        private final FakeTicker ticker = new FakeTicker();
+
         @Test
         void entryIsAvailableBeforeTtl() {
-            final Cache<String, String> cache = Caches.create(c -> c.lru().ttl(Duration.ofMinutes(1))).build();
+            final Cache<String, String> cache = Caches.create(c -> c.lru().ttl(TTL).ticker(ticker)).build();
             cache.put("A", "alpha");
+
+            ticker.advance(TTL.minusNanos(1));
 
             assertEquals(Optional.of("alpha"), cache.get("A"));
         }
 
         @Test
-        void expiredEntryIsRemovedOnGet() throws InterruptedException {
-            final Cache<String, String> cache = Caches.create(c -> c.lru().ttl(SHORT_TTL)).build();
+        void expiredEntryIsRemovedOnGet() {
+            final Cache<String, String> cache = Caches.create(c -> c.lru().ttl(TTL).ticker(ticker)).build();
             cache.put("A", "alpha");
 
-            Thread.sleep(WAIT_PAST_TTL_MILLIS);
+            ticker.advance(TTL);
 
             assertEquals(Optional.empty(), cache.get("A"));
             assertEquals(0, cache.size());
         }
 
         @Test
-        void withoutTtlEntriesDoNotExpire() throws InterruptedException {
-            final Cache<String, String> cache = Caches.create(CacheConfiguration::lru).build();
+        void getDoesNotExtendTtl() {
+            final Cache<String, String> cache = Caches.create(c -> c.lru().ttl(TTL).ticker(ticker)).build();
             cache.put("A", "alpha");
 
-            Thread.sleep(WAIT_PAST_TTL_MILLIS);
+            ticker.advance(Duration.ofMinutes(4));
+            cache.get("A");
+            ticker.advance(Duration.ofMinutes(1));
+
+            assertEquals(Optional.empty(), cache.get("A"));
+        }
+
+        @Test
+        void putAfterExpiryStoresFreshValue() {
+            final Cache<String, String> cache = Caches.create(c -> c.lru().ttl(TTL).ticker(ticker)).build();
+            cache.put("A", "alpha");
+
+            ticker.advance(TTL);
+            cache.put("A", "alpha-2");
+
+            assertEquals(Optional.of("alpha-2"), cache.get("A"));
+            assertEquals(1, cache.size());
+        }
+
+        @Test
+        void withoutTtlEntriesDoNotExpire() {
+            final Cache<String, String> cache = Caches.create(c -> c.lru().ticker(ticker)).build();
+            cache.put("A", "alpha");
+
+            ticker.advance(Duration.ofDays(365));
 
             assertEquals(Optional.of("alpha"), cache.get("A"));
         }
 
         @Test
-        void expiredEntriesAreCleanedBeforeEvictingValidOnes() throws InterruptedException {
-            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).lru().ttl(Duration.ofMillis(200))).build();
+        void expiredEntriesAreCleanedBeforeEvictingValidOnes() {
+            final Cache<String, String> cache = Caches.create(c -> c.capacity(2).lru().ttl(TTL).ticker(ticker)).build();
             cache.put("A", "a");
-            Thread.sleep(250);
+            ticker.advance(TTL);
             cache.put("B", "b");
 
             cache.put("C", "c");

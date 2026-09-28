@@ -15,10 +15,10 @@ Nguồn trong repo: [Cache](../src/main/java/app/cache/Cache.java), [InMemoryCac
 
 ## Giới hạn số phần tử
 
-Mỗi cache có một `capacity` lớn hơn 0. Khi thêm key mới vào cache đã đầy, `InMemoryCache` dọn các entry hết hạn trước. Nếu sau đó vẫn đầy, cache cần chọn một key để loại rồi mới thêm key mới. Quyết định chọn key thuộc về **eviction policy**; map chứa giá trị không tự quyết định thứ tự loại bỏ.
+Mỗi cache có một `capacity` lớn hơn 0. Khi thêm key mới vào cache đã đầy và cache có cấu hình TTL, `InMemoryCache` dọn các entry hết hạn trước; không có TTL thì bỏ qua bước này. Nếu sau đó vẫn đầy, cache cần chọn một key để loại rồi mới thêm key mới. Quyết định chọn key thuộc về **eviction policy**; map chứa giá trị không tự quyết định thứ tự loại bỏ.
 
 TTL và eviction giải quyết hai việc khác nhau. TTL xác định entry còn hợp lệ theo thời gian; eviction tạo chỗ trống khi cache đầy. Cache có thể dùng eviction mà không bật TTL.
 
-Nguồn trong repo: [CacheConfig](../src/main/java/app/cache/config/CacheConfig.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java), [CacheBuilder](../src/main/java/app/cache/builder/CacheBuilder.java).
+Nguồn trong repo: [CacheConfig](../src/main/java/app/cache/config/CacheConfig.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java), [Caches](../src/main/java/app/cache/Caches.java).
 
 Đọc tiếp: [Eviction và các chính sách loại bỏ](eviction.md). Nếu muốn dùng API ngay, xem [hướng dẫn sử dụng](usage.md).

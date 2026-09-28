@@ -21,24 +21,21 @@ Nguồn trong repo: [InMemoryCache](../src/main/java/app/cache/InMemoryCache.jav
 
 ## Repo giữ thứ tự sử dụng bằng gì?
 
-`LruAccessOrder` kết hợp hai cấu trúc:
+`LruEvictionPolicy` giữ các entry trong một `EntryList` (xem [tổng quan eviction](eviction.md)): đầu danh sách là key lâu nhất chưa được dùng, cuối danh sách là key vừa được dùng gần nhất.
 
-- `HashMap<K, LruNode<K>>` tìm nhanh node tương ứng với một key.
-- Danh sách liên kết đôi nối các node bằng `prev` và `next`. `head` là key lâu nhất chưa được dùng; `tail` là key vừa được dùng gần nhất.
+Khi một key được sử dụng lại, `moveToLast` tháo entry khỏi vị trí cũ rồi gắn vào cuối danh sách. Khi cần eviction, `removeFirst` tháo entry ở đầu; `InMemoryCache` sau đó xóa key của entry đó khỏi map. Policy không có map riêng: `InMemoryCache` tra key một lần rồi đưa thẳng entry cho policy.
 
-Khi một key được sử dụng lại, `moveToTail` tháo node khỏi vị trí cũ rồi gắn vào cuối danh sách. Khi cần eviction, `removeLeastRecentlyUsed` tháo `head` và xóa key tương ứng khỏi map của policy. `InMemoryCache` sau đó xóa key đó khỏi map chứa giá trị. Map trong policy và map chứa giá trị có vai trò khác nhau: một bên tìm node để cập nhật thứ tự, một bên lưu dữ liệu cache.
-
-Nguồn trong repo: [LruAccessOrder](../src/main/java/app/cache/eviction/lru/LruAccessOrder.java), [LruNode](../src/main/java/app/cache/eviction/lru/LruNode.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+Nguồn trong repo: [LruEvictionPolicy](../src/main/java/app/cache/eviction/lru/LruEvictionPolicy.java), [EntryList](../src/main/java/app/cache/entry/EntryList.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
 
 ## Các thao tác tác động đến LRU ra sao?
 
-- `onPut(key)` thêm node mới vào cuối, hoặc chuyển node đã có xuống cuối.
-- `onGet(key)` chuyển node xuống cuối nếu key có trong policy. `InMemoryCache` chỉ gọi thao tác này sau khi xác nhận giá trị còn hiệu lực.
-- `onRemove(key)` xóa node khi key bị xóa thủ công hoặc hết hạn.
-- `evict()` lấy key ở đầu danh sách; `clear()` xóa toàn bộ map và thứ tự liên kết.
+- `onAdd(entry)` thêm entry mới vào cuối.
+- `onAccess(entry)` chuyển entry xuống cuối. `InMemoryCache` gọi thao tác này khi `get` trả về giá trị còn hiệu lực và khi `put` cập nhật key đang có.
+- `onRemove(entry)` tháo entry khi key bị xóa thủ công hoặc hết hạn.
+- `evict()` tháo entry ở đầu danh sách; `clear()` xóa toàn bộ thứ tự liên kết.
 
-Điểm dễ nhầm: một lần `get` không tìm thấy key không làm đổi thứ tự LRU. Tương tự, key đã hết hạn bị xóa khỏi cache và policy thay vì được chuyển xuống cuối. Việc chuyển node đã tìm thấy và loại node đầu danh sách chỉ cần thay đổi một số liên kết; tra key trong `HashMap` có chi phí trung bình hằng số. Đây là đặc điểm của cách cài đặt hiện tại, chưa xét truy cập đồng thời.
+Điểm dễ nhầm: một lần `get` không tìm thấy key không làm đổi thứ tự LRU. Tương tự, key đã hết hạn bị xóa khỏi cache và policy thay vì được chuyển xuống cuối. Việc chuyển entry và loại entry đầu danh sách chỉ cần thay đổi một số liên kết; tra key trong `HashMap` của cache có chi phí trung bình hằng số. Đây là đặc điểm của cách cài đặt hiện tại, chưa xét truy cập đồng thời.
 
-Nguồn trong repo: [LruEvictionPolicy](../src/main/java/app/cache/eviction/lru/LruEvictionPolicy.java), [LruAccessOrder](../src/main/java/app/cache/eviction/lru/LruAccessOrder.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+Nguồn trong repo: [LruEvictionPolicy](../src/main/java/app/cache/eviction/lru/LruEvictionPolicy.java), [EntryList](../src/main/java/app/cache/entry/EntryList.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
 
 Đọc tiếp: [Chính sách LFU](lfu.md) để xem cách chọn key theo tần suất sử dụng.

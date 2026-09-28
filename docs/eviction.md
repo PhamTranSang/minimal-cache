@@ -1,14 +1,16 @@
 # Eviction và các chính sách loại bỏ
 
-Đọc [cache trong bộ nhớ](cache.md) trước để biết `capacity` và các thao tác cơ bản. **Eviction** là việc loại một entry để nhường chỗ khi thêm key mới vào cache đã đầy. Trước khi eviction, `InMemoryCache` dọn entry hết hạn nếu có; nếu vẫn đầy, nó hỏi eviction policy key nào cần loại.
+Đọc [cache trong bộ nhớ](cache.md) trước để biết `capacity` và các thao tác cơ bản. **Eviction** là việc loại một entry để nhường chỗ khi thêm key mới vào cache đã đầy. Trước khi eviction, nếu cache có cấu hình TTL, `InMemoryCache` dọn entry hết hạn; nếu vẫn đầy, nó hỏi eviction policy key nào cần loại.
 
 ## Eviction policy giữ thông tin gì?
 
-`InMemoryCache` giữ key và value trong một `HashMap`. Eviction policy chỉ theo dõi thông tin cần để chọn key: thứ tự được thêm, thứ tự sử dụng hoặc tần suất sử dụng. Hai bên phải cùng cập nhật khi key được thêm, đọc, xóa hoặc bị loại.
+`InMemoryCache` giữ dữ liệu trong **một** `HashMap<K, CacheEntry<K, V>>`. Mỗi `CacheEntry` chứa key, value và các thông tin policy cần: thời điểm ghi cho TTL, tần suất cho LFU, và hai liên kết `prev`/`next` để nối entry vào một danh sách liên kết đôi. Danh sách đó là `EntryList`, dùng chung cho cả ba policy: thêm vào cuối, tháo một entry, lấy entry đầu tiên và chuyển một entry xuống cuối đều chỉ đổi vài liên kết.
 
-Giao diện `EvictionPolicy` mô tả các sự kiện đó: `onPut` cho lần ghi, `onGet` cho lần đọc, `onRemove` cho lần xóa, `evict` để chọn và bỏ key khỏi trạng thái policy, và `clear` để xóa toàn bộ trạng thái. `InMemoryCache` gọi `onGet` sau khi xác nhận giá trị còn hiệu lực; khi entry bị xóa do TTL, cache cũng gọi `onRemove` để policy không giữ key cũ.
+Vì policy nhận thẳng entry thay vì key, nó không cần map riêng để tìm entry theo key; mỗi thao tác cache chỉ tra hash một lần. Mỗi cache chỉ có một eviction policy, nên `prev`/`next` của một entry chỉ thuộc về một danh sách tại một thời điểm.
 
-Nguồn trong repo: [EvictionPolicy](../src/main/java/app/cache/eviction/EvictionPolicy.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+Giao diện `EvictionPolicy` mô tả các sự kiện của entry: `onAdd` khi key mới vào cache, `onAccess` khi `get` trả về giá trị còn hiệu lực hoặc `put` cập nhật key đang có, `onRemove` khi entry bị xóa, `evict` để chọn và tháo entry cần loại, và `clear` để xóa toàn bộ trạng thái. Khi entry bị xóa do TTL, cache cũng gọi `onRemove` để policy tháo entry khỏi danh sách của nó.
+
+Nguồn trong repo: [EvictionPolicy](../src/main/java/app/cache/eviction/EvictionPolicy.java), [CacheEntry](../src/main/java/app/cache/entry/CacheEntry.java), [EntryList](../src/main/java/app/cache/entry/EntryList.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
 
 ## Ba chính sách hiện có
 

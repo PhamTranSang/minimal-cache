@@ -5,11 +5,7 @@ import app.cache.exception.InvalidCapacityException;
 import app.cache.exception.InvalidCacheConfigurationException;
 import app.cache.expiration.ExpirationPolicy;
 
-public record CacheConfig<K>(
-    int capacity,
-    EvictionPolicy<K> evictionPolicy,
-    ExpirationPolicy<K> expirationPolicy
-) {
+public record CacheConfig<K, V>(int capacity, EvictionPolicy<K, V> evictionPolicy, ExpirationPolicy<K, V> expirationPolicy) {
 
     public CacheConfig {
         if (capacity <= 0) {

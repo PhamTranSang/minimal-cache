@@ -1,28 +1,26 @@
 package app.cache.eviction.fifo;
 
+import app.cache.entry.CacheEntry;
+import app.cache.entry.EntryList;
 import app.cache.eviction.EvictionPolicy;
-import java.util.ArrayDeque;
-import java.util.Queue;
 
-public final class FifoEvictionPolicy<K> implements EvictionPolicy<K> {
+public final class FifoEvictionPolicy<K, V> implements EvictionPolicy<K, V> {
 
-    private final Queue<K> insertionOrder = new ArrayDeque<>();
+    private final EntryList<K, V> insertionOrder = new EntryList<>();
 
     @Override
-    public void onPut(final K key) {
-        if (!insertionOrder.contains(key)) {
-            insertionOrder.offer(key);
-        }
+    public void onAdd(final CacheEntry<K, V> entry) {
+        insertionOrder.addLast(entry);
     }
 
     @Override
-    public void onRemove(final K key) {
-        insertionOrder.remove(key);
+    public void onRemove(final CacheEntry<K, V> entry) {
+        insertionOrder.remove(entry);
     }
 
     @Override
-    public K evict() {
-        return insertionOrder.poll();
+    public CacheEntry<K, V> evict() {
+        return insertionOrder.removeFirst();
     }
 
     @Override

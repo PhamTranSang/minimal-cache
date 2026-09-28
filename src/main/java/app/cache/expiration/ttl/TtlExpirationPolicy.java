@@ -1,18 +1,18 @@
 package app.cache.expiration.ttl;
 
+import app.cache.Ticker;
+import app.cache.entry.CacheEntry;
 import app.cache.expiration.ExpirationPolicy;
-import app.cache.exception.InvalidCacheEntryException;
+import app.cache.exception.InvalidCacheConfigurationException;
 import app.cache.exception.InvalidTtlException;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
 
-public final class TtlExpirationPolicy<K> implements ExpirationPolicy<K> {
+public final class TtlExpirationPolicy<K, V> implements ExpirationPolicy<K, V> {
 
-    private final Map<K, Long> writeTimes = new HashMap<>();
     private final long ttlNanos;
+    private final Ticker ticker;
 
-    public TtlExpirationPolicy(final Duration ttl) {
+    public TtlExpirationPolicy(final Duration ttl, final Ticker ticker) {
         if (ttl == null) {
             throw new InvalidTtlException("ttl must not be null");
         }
@@ -26,45 +26,23 @@ public final class TtlExpirationPolicy<K> implements ExpirationPolicy<K> {
         } catch (ArithmeticException cause) {
             throw new InvalidTtlException("ttl is too large to represent in nanoseconds", cause);
         }
+
+        if (ticker == null) {
+            throw new InvalidCacheConfigurationException("ticker must not be null");
+        }
+
+        this.ticker = ticker;
     }
 
     @Override
-    public void onPut(final K key) {
-        if (key == null) {
-            throw new InvalidCacheEntryException("key must not be null");
-        }
-
-        writeTimes.put(key, System.nanoTime());
+    public void onWrite(final CacheEntry<K, V> entry) {
+        entry.setWriteTime(ticker.read());
     }
 
     @Override
-    public boolean isExpired(final K key) {
-        if (key == null) {
-            throw new InvalidCacheEntryException("key must not be null");
-        }
-
-        final Long writeTime = writeTimes.get(key);
-
-        if (writeTime == null) {
-            return false;
-        }
-
-        final long elapsed = System.nanoTime() - writeTime;
+    public boolean isExpired(final CacheEntry<K, V> entry) {
+        final long elapsed = ticker.read() - entry.getWriteTime();
 
         return elapsed >= ttlNanos;
-    }
-
-    @Override
-    public void onRemove(final K key) {
-        if (key == null) {
-            throw new InvalidCacheEntryException("key must not be null");
-        }
-
-        writeTimes.remove(key);
-    }
-
-    @Override
-    public void clear() {
-        writeTimes.clear();
     }
 }

@@ -4,7 +4,7 @@ Tài liệu này đi sâu vào FIFO. Đọc [cache trong bộ nhớ](cache.md) v
 
 ## FIFO chọn phần tử nào?
 
-FIFO (*First In, First Out*) loại key được **đưa vào cache sớm nhất** trong số các key còn lại. `FifoEvictionPolicy` giữ thứ tự đó bằng một hàng đợi (`ArrayDeque`): đầu hàng đợi là key sẽ bị loại tiếp theo.
+FIFO (*First In, First Out*) loại key được **đưa vào cache sớm nhất** trong số các key còn lại. `FifoEvictionPolicy` giữ thứ tự đó bằng một `EntryList` (xem [tổng quan eviction](eviction.md)) dùng như hàng đợi: đầu hàng đợi là key sẽ bị loại tiếp theo.
 
 Giả sử `capacity = 3`, không cấu hình TTL và ban đầu cache rỗng. Trong bảng, `put(A)` là cách viết gọn cho `put(A, giá trị)`:
 
@@ -21,14 +21,14 @@ Nguồn trong repo: [FifoEvictionPolicy](../src/main/java/app/cache/eviction/fif
 
 ## Code phối hợp với FIFO ra sao?
 
-- `onPut(key)` chỉ đưa key mới vào cuối hàng đợi; `contains()` ngăn một key xuất hiện hai lần.
-- `onGet(key)` dùng hành vi mặc định của `EvictionPolicy`, nên không đổi hàng đợi.
-- `onRemove(key)` xóa key khỏi hàng đợi khi cache xóa thủ công hoặc do hết hạn.
-- `evict()` lấy và bỏ key ở đầu hàng đợi; `InMemoryCache` dùng key đó để xóa giá trị tương ứng khỏi `HashMap`.
+- `onAdd(entry)` đưa entry mới vào cuối hàng đợi.
+- `onAccess(entry)` dùng hành vi mặc định của `EvictionPolicy` (không làm gì), nên đọc hoặc cập nhật key không đổi hàng đợi.
+- `onRemove(entry)` tháo entry khỏi hàng đợi khi cache xóa thủ công hoặc do hết hạn.
+- `evict()` lấy và tháo entry ở đầu hàng đợi; `InMemoryCache` dùng key của entry đó để xóa nó khỏi `HashMap`.
 - `clear()` xóa toàn bộ thứ tự FIFO cùng lúc cache xóa dữ liệu.
 
-`contains()` trong `onPut` và `remove(key)` phải tìm trong hàng đợi, nên chi phí tăng theo số phần tử. Đây là đặc điểm của cách cài đặt hiện tại, không phải quy tắc bắt buộc của FIFO.
+Policy nhận thẳng entry nên không phải tìm key trong hàng đợi: mọi thao tác chỉ đổi vài liên kết. Bản cài đặt đầu tiên dùng `ArrayDeque` phải duyệt hàng đợi khi kiểm tra và xóa key, nên chậm dần theo số phần tử.
 
-Nguồn trong repo: [EvictionPolicy](../src/main/java/app/cache/eviction/EvictionPolicy.java), [FifoEvictionPolicy](../src/main/java/app/cache/eviction/fifo/FifoEvictionPolicy.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+Nguồn trong repo: [EvictionPolicy](../src/main/java/app/cache/eviction/EvictionPolicy.java), [FifoEvictionPolicy](../src/main/java/app/cache/eviction/fifo/FifoEvictionPolicy.java), [EntryList](../src/main/java/app/cache/entry/EntryList.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
 
 Đọc tiếp: [Chính sách LRU](lru.md) để xem thứ tự thay đổi khi một key được đọc hoặc cập nhật.

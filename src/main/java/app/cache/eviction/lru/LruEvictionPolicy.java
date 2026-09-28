@@ -1,29 +1,32 @@
 package app.cache.eviction.lru;
 
+import app.cache.entry.CacheEntry;
+import app.cache.entry.EntryList;
 import app.cache.eviction.EvictionPolicy;
 
-public final class LruEvictionPolicy<K> implements EvictionPolicy<K> {
+public final class LruEvictionPolicy<K, V> implements EvictionPolicy<K, V> {
 
-    private final LruAccessOrder<K> accessOrder = new LruAccessOrder<>();
+    // Head is the least recently used entry, tail the most recently used.
+    private final EntryList<K, V> accessOrder = new EntryList<>();
 
     @Override
-    public void onGet(final K key) {
-        accessOrder.access(key);
+    public void onAdd(final CacheEntry<K, V> entry) {
+        accessOrder.addLast(entry);
     }
 
     @Override
-    public void onPut(final K key) {
-        accessOrder.add(key);
+    public void onAccess(final CacheEntry<K, V> entry) {
+        accessOrder.moveToLast(entry);
     }
 
     @Override
-    public void onRemove(final K key) {
-        accessOrder.remove(key);
+    public void onRemove(final CacheEntry<K, V> entry) {
+        accessOrder.remove(entry);
     }
 
     @Override
-    public K evict() {
-        return accessOrder.removeLeastRecentlyUsed();
+    public CacheEntry<K, V> evict() {
+        return accessOrder.removeFirst();
     }
 
     @Override

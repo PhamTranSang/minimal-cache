@@ -2,23 +2,22 @@
 
 Đây là hướng dẫn dùng API hiện có của project trong một chương trình Java. Project đang ở giai đoạn học tập, chưa phát hành artifact để tải từ Maven Central và chưa hỗ trợ truy cập cache đồng thời từ nhiều luồng.
 
-> **Lưu ý về Java modules:** Các ví dụ dùng `CacheBuilder` dưới đây áp dụng khi dùng mã nguồn hoặc artifact trên **classpath**. `module-info.java` hiện chưa export package `app.cache.builder` và các package chứa FIFO/LRU/LFU, nên một **named module** khác chưa thể dùng trực tiếp các lớp đó qua module path.
+Cache được tạo qua DSL `Caches.create(...)`. `Cache`, `Caches` và `Ticker` đều nằm trong package `app.cache` được export, nên API này dùng được cả trên classpath lẫn từ một named module khác.
 
 ## Tạo cache và thao tác cơ bản
 
-Khi tạo cache qua `CacheBuilder`, cần đặt `capacity` lớn hơn 0 và chọn một eviction policy. Nếu không đặt expiration policy, các phần tử mặc định không hết hạn theo thời gian.
+Truyền vào `Caches.create` một lambda cấu hình, rồi gọi `build()`. Lambda phải chọn đúng một eviction policy; chọn lần hai sẽ báo lỗi cấu hình. Không gọi `capacity` thì mặc định là 100; nếu gọi, giá trị phải lớn hơn 0. Không gọi `ttl` thì các phần tử không hết hạn theo thời gian.
 
 ```java
 import app.cache.Cache;
-import app.cache.builder.CacheBuilder;
-import app.cache.eviction.fifo.FifoEvictionPolicy;
+import app.cache.Caches;
 
 public class CacheUsageExample {
     public static void main(String[] args) {
-        Cache<String, String> cache = CacheBuilder.<String, String>newBuilder()
+        Cache<String, String> cache = Caches.create(config -> config
             .capacity(2)
-            .evictionPolicy(new FifoEvictionPolicy<>())
-            .build();
+            .fifo()
+        ).build();
 
         cache.put("A", "alpha");
         cache.put("B", "beta");
@@ -30,62 +29,6 @@ public class CacheUsageExample {
 
         cache.remove("B"); // Returns an Optional containing the removed value.
         cache.clear();      // Removes all remaining entries.
-    }
-}
-```
-
-`get` và `remove` trả về `Optional`: rỗng nếu không tìm thấy key, có giá trị nếu tìm thấy. `put` thêm key mới hoặc cập nhật giá trị của key đang có. Không truyền `null` cho key hoặc value.
-
-Nguồn trong repo: [Cache](../src/main/java/app/cache/Cache.java), [CacheBuilder](../src/main/java/app/cache/builder/CacheBuilder.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
-
-## Chọn chính sách loại bỏ
-
-Thay `new FifoEvictionPolicy<>()` trong ví dụ trên bằng `new LruEvictionPolicy<>()` hoặc `new LfuEvictionPolicy<>()` để đổi cách chọn phần tử khi cache đầy. Các lớp tương ứng nằm trong `app.cache.eviction.lru` và `app.cache.eviction.lfu`.
-
-- [FIFO](fifo.md): loại key được thêm vào sớm nhất.
-- [LRU](lru.md): loại key lâu nhất chưa được sử dụng.
-- [LFU](lfu.md): loại key có tần suất sử dụng thấp nhất.
-
-Tạo một policy mới cho mỗi cache. Policy giữ trạng thái thứ tự hoặc tần suất riêng của cache đó; dùng chung một instance cho nhiều cache sẽ trộn trạng thái của chúng.
-
-Nguồn trong repo: [FifoEvictionPolicy](../src/main/java/app/cache/eviction/fifo/FifoEvictionPolicy.java), [LruEvictionPolicy](../src/main/java/app/cache/eviction/lru/LruEvictionPolicy.java), [LfuEvictionPolicy](../src/main/java/app/cache/eviction/lfu/LfuEvictionPolicy.java).
-
-## Đặt TTL
-
-Để phần tử hết hạn sau một khoảng thời gian kể từ lần ghi gần nhất, thêm expiration policy vào builder:
-
-```java
-Cache<String, String> cache = CacheBuilder.<String, String>newBuilder()
-    .capacity(2)
-    .evictionPolicy(new FifoEvictionPolicy<>())
-    .expirationPolicy(new TtlExpirationPolicy<>(Duration.ofMinutes(5)))
-    .build();
-```
-
-Đoạn này dùng cùng các import như ví dụ đầu, cộng thêm `java.time.Duration` và `app.cache.expiration.ttl.TtlExpirationPolicy`. Mỗi lần `put` sẽ bắt đầu lại TTL của key; `get` không gia hạn TTL. Việc xóa entry hết hạn diễn ra khi cache kiểm tra nó, không có tác vụ dọn nền. Vì vậy `size()` có thể vẫn tính entry đã hết hạn nhưng chưa được dọn; `remove()` hiện không kiểm tra TTL trước khi trả giá trị.
-
-TTL phải lớn hơn 0 và đủ nhỏ để biểu diễn bằng nanosecond. Xem [cách TTL hoạt động trong repo](ttl.md) để hiểu các thời điểm cache kiểm tra hạn dùng.
-
-Nguồn trong repo: [TtlExpirationPolicy](../src/main/java/app/cache/expiration/ttl/TtlExpirationPolicy.java), [CacheBuilder](../src/main/java/app/cache/builder/CacheBuilder.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
-
-## Tạo cache bằng DSL
-
-Nếu muốn cấu hình bằng lambda, dùng `Caches.create(...)` rồi gọi `build()`. DSL tự tạo eviction policy mới cho cache; không cần import các lớp FIFO/LRU/LFU. Không gọi `capacity` thì mặc định là 100; không gọi `ttl` thì dùng `NoExpirationPolicy`.
-
-```java
-import app.cache.Cache;
-import app.cache.Caches;
-import java.time.Duration;
-
-public class DslUsageExample {
-    public static void main(String[] args) {
-        Cache<String, String> cache = Caches.create(config -> config
-            .capacity(2)
-            .lru()
-            .ttl(Duration.ofMinutes(5))
-        ).build();
-
-        cache.put("A", "alpha");
 
         Cache<String, String> defaultCache = Caches.create(config -> config.lru()).build();
         // defaultCache has capacity 100 and no expiration.
@@ -93,6 +36,55 @@ public class DslUsageExample {
 }
 ```
 
-Thay `.lru()` bằng `.fifo()` hoặc `.lfu()` để chọn chính sách khác. Mỗi lambda phải chọn đúng một policy; chọn policy lần hai sẽ báo lỗi cấu hình. Nếu gọi `capacity`, giá trị phải lớn hơn 0. `Caches` nằm trong package `app.cache` được export, nên riêng API DSL có thể được gọi từ named module khác.
+`get` và `remove` trả về `Optional`: rỗng nếu không tìm thấy key, có giá trị nếu tìm thấy. `put` thêm key mới hoặc cập nhật giá trị của key đang có. Không truyền `null` cho key hoặc value.
 
-Nguồn trong repo: [Caches](../src/main/java/app/cache/Caches.java), [CacheConfig](../src/main/java/app/cache/config/CacheConfig.java).
+Nguồn trong repo: [Cache](../src/main/java/app/cache/Cache.java), [Caches](../src/main/java/app/cache/Caches.java), [CacheConfig](../src/main/java/app/cache/config/CacheConfig.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).
+
+## Chọn chính sách loại bỏ
+
+Thay `.fifo()` trong ví dụ trên bằng `.lru()` hoặc `.lfu()` để đổi cách chọn phần tử khi cache đầy.
+
+- [FIFO](fifo.md): loại key được thêm vào sớm nhất.
+- [LRU](lru.md): loại key lâu nhất chưa được sử dụng.
+- [LFU](lfu.md): loại key có tần suất sử dụng thấp nhất.
+
+Mỗi lần `build()` tạo một eviction policy mới, nên hai cache tạo từ cùng một cấu hình vẫn giữ thứ tự hoặc tần suất riêng, không trộn trạng thái của nhau.
+
+Nguồn trong repo: [Caches](../src/main/java/app/cache/Caches.java), [FifoEvictionPolicy](../src/main/java/app/cache/eviction/fifo/FifoEvictionPolicy.java), [LruEvictionPolicy](../src/main/java/app/cache/eviction/lru/LruEvictionPolicy.java), [LfuEvictionPolicy](../src/main/java/app/cache/eviction/lfu/LfuEvictionPolicy.java).
+
+## Đặt TTL
+
+Để phần tử hết hạn sau một khoảng thời gian kể từ lần ghi gần nhất, gọi `ttl`:
+
+```java
+Cache<String, String> cache = Caches.create(config -> config
+    .capacity(2)
+    .fifo()
+    .ttl(Duration.ofMinutes(5))
+).build();
+```
+
+Đoạn này dùng cùng các import như ví dụ đầu, cộng thêm `java.time.Duration`. Mỗi lần `put` sẽ bắt đầu lại TTL của key; `get` không gia hạn TTL. Việc xóa entry hết hạn diễn ra khi cache kiểm tra nó, không có tác vụ dọn nền. Vì vậy `size()` có thể vẫn tính entry đã hết hạn nhưng chưa được dọn; `remove()` hiện không kiểm tra TTL trước khi trả giá trị.
+
+TTL phải lớn hơn 0 và đủ nhỏ để biểu diễn bằng nanosecond. Giá trị không hợp lệ bị báo lỗi khi gọi `build()`. Xem [cách TTL hoạt động trong repo](ttl.md) để hiểu các thời điểm cache kiểm tra hạn dùng.
+
+### Thay nguồn thời gian bằng `ticker`
+
+Cache đo thời gian trôi qua bằng một `Ticker`, mặc định là `Ticker.systemTicker()` (đọc `System.nanoTime()`). Gọi `ticker(...)` để thay nguồn thời gian này, thường là trong test, để đẩy thời gian lên theo ý mà không phải chờ thật:
+
+```java
+long[] now = {0};
+Cache<String, String> cache = Caches.create(config -> config
+    .lru()
+    .ttl(Duration.ofMinutes(5))
+    .ticker(() -> now[0])
+).build();
+
+cache.put("A", "alpha");
+now[0] += Duration.ofMinutes(5).toNanos();
+System.out.println(cache.get("A")); // Optional.empty
+```
+
+`Ticker` chỉ dùng để đo khoảng thời gian, không phải giờ đồng hồ. Không gọi `ttl` thì cache không đọc ticker. Truyền `null` cho `ticker` khi đã gọi `ttl` sẽ báo lỗi cấu hình khi `build()`.
+
+Nguồn trong repo: [Caches](../src/main/java/app/cache/Caches.java), [Ticker](../src/main/java/app/cache/Ticker.java), [TtlExpirationPolicy](../src/main/java/app/cache/expiration/ttl/TtlExpirationPolicy.java), [InMemoryCache](../src/main/java/app/cache/InMemoryCache.java).

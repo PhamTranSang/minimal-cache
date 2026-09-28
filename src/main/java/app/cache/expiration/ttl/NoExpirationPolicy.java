@@ -1,23 +1,16 @@
 package app.cache.expiration.ttl;
 
+import app.cache.entry.CacheEntry;
 import app.cache.expiration.ExpirationPolicy;
 
-public final class NoExpirationPolicy<K> implements ExpirationPolicy<K> {
+public final class NoExpirationPolicy<K, V> implements ExpirationPolicy<K, V> {
 
     @Override
-    public void onPut(final K key) {
+    public void onWrite(final CacheEntry<K, V> entry) {
     }
 
     @Override
-    public boolean isExpired(final K key) {
+    public boolean isExpired(final CacheEntry<K, V> entry) {
         return false;
-    }
-
-    @Override
-    public void onRemove(final K key) {
-    }
-
-    @Override
-    public void clear() {
     }
 }
